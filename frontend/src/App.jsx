@@ -27,49 +27,8 @@ export default function App() {
   const [isAgreed, setIsAgreed] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // 🌟【IG/Threads 內建瀏覽器終極殺手鐧】
-  useEffect(() => {
-    const updateViewport = () => {
-      if (window.visualViewport) {
-        // 1. 抓取扣除鍵盤後的真實高度
-        document.documentElement.style.setProperty('--vh', `${window.visualViewport.height}px`);
-        // 2. 抓取 IG/Threads 暴力把網頁往上推的「偏移量」
-        document.documentElement.style.setProperty('--offset', `${window.visualViewport.offsetTop}px`);
-      } else {
-        document.documentElement.style.setProperty('--vh', `${window.innerHeight}px`);
-        document.documentElement.style.setProperty('--offset', `0px`);
-      }
-    };
-
-    updateViewport(); // 初始化先抓一次
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', updateViewport);
-      // 🌟 針對 iOS In-App Browser 必須額外監聽 scroll 事件
-      window.visualViewport.addEventListener('scroll', updateViewport); 
-    } else {
-      window.addEventListener('resize', updateViewport);
-    }
-
-    // 🌟 徹底鎖死底層，防止 IG 內建瀏覽器亂滾動
-    document.body.style.overflow = 'hidden';
-    document.body.style.position = 'fixed';
-    document.body.style.width = '100%';
-    document.body.style.height = '100%';
-
-    return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', updateViewport);
-        window.visualViewport.removeEventListener('scroll', updateViewport);
-      } else {
-        window.removeEventListener('resize', updateViewport);
-      }
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
-      document.body.style.height = '';
-    };
-  }, []);
+  // 🌟【移除所有複雜的視覺鎖定，回歸最純粹的狀態】
+  // 我們不再強制鎖死 document.body，讓 IG 內建瀏覽器保有它的原生滾動能力
 
   useEffect(() => {
     sessionStorage.setItem('st_appState', appState);
@@ -199,21 +158,31 @@ export default function App() {
     }
   };
 
-  // 🌟【終極版式設定】：讓整個 App 變成一個絕對定位的浮動框，動態追蹤可視範圍
+  // 🌟【IG/Threads 專用：強制捲動大法】
+  const handleInputFocus = () => {
+    setTimeout(() => {
+      // 1. 命令整個網頁滾到最下面
+      window.scrollTo({
+        top: document.documentElement.scrollHeight,
+        behavior: 'smooth'
+      });
+      // 2. 命令對話框滾到最下面
+      scrollToBottom();
+    }, 300); // 給鍵盤 0.3 秒的彈出時間
+  };
+
+  // 修復 iOS 收起鍵盤後，下面留下一大片白色的 Bug
+  const handleInputBlur = () => {
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
+  };
+
+  // 使用 h-[100dvh] 讓現代瀏覽器動態適應，同時解開 position: fixed
   return (
-    <div 
-      className="flex flex-col bg-gray-100 font-sans w-full overflow-hidden"
-      style={{ 
-        position: 'fixed',
-        left: 0,
-        // 這裡會動態抓取 IG 推上去的距離，把它補回來！
-        top: 'var(--offset, 0px)',
-        // 這裡吃精準計算後的高度
-        height: 'var(--vh, 100dvh)',
-        width: '100%'
-      }}
-    >
+    <div className="flex flex-col h-[100dvh] bg-gray-100 font-sans w-full relative">
       <header className="bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-10 shrink-0">
+        {/* 薪水兩個字已經完美補上 */}
         <h1 className="text-lg font-bold tracking-wider truncate">🕵️‍♂️ 薪水小偷互助會</h1>
         {appState === 'CHATTING' && (
           <div className="flex items-center gap-3 shrink-0">
@@ -275,7 +244,7 @@ export default function App() {
       {appState === 'CHATTING' && (
         <div className="flex-1 flex flex-col overflow-hidden relative">
           
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 pb-4">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'me' ? 'justify-end' : msg.sender === 'system' ? 'justify-center' : 'justify-start'}`}>
                 {msg.sender === 'system' ? (
@@ -292,7 +261,7 @@ export default function App() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="bg-white p-3 border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 relative shrink-0">
+          <div className="bg-white p-3 border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] shrink-0 z-10">
             <div className="text-center text-gray-400 text-[10px] font-medium mb-2 tracking-widest select-none">
               薪水小偷互助會 by @fourzpoem
             </div>
@@ -302,8 +271,9 @@ export default function App() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                /* 點擊輸入時讓畫面自動滾到底，不使用額外的 ScrollIntoView 以免和絕對定位打架 */
-                onFocus={() => setTimeout(scrollToBottom, 200)}
+                /* 🌟 套用這兩個終極防禦機制 */
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
                 placeholder="輸入訊息一起摸魚..."
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />

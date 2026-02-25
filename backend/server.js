@@ -135,6 +135,6 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`後端伺服器升級完畢，運行於 port ${PORT}`);
 });

@@ -110,12 +110,17 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 font-sans">
-      <header className="bg-gray-800 text-white p-4 shadow-md flex justify-between items-center z-10">
-        <h1 className="text-xl font-bold tracking-wider">🕵️‍♂️ 薪水小偷互助會</h1>
+    <div className="flex flex-col h-[100dvh] bg-gray-100 font-sans">
+      {/* 標題列：把檢舉和離開按鈕搬到這裡，節省下方空間 */}
+      <header className="bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-10 shrink-0">
+        <h1 className="text-lg font-bold tracking-wider truncate">🕵️‍♂️ 小偷互助會</h1>
         {appState === 'CHATTING' && (
-          <div className="bg-green-500 text-gray-900 px-4 py-1 rounded-full font-mono font-bold animate-pulse shadow-lg border border-green-400">
-            已白賺：$ {stolenMoney.toFixed(2)}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="bg-green-500 text-gray-900 px-3 py-1 rounded-full font-mono font-bold text-sm animate-pulse shadow border border-green-400">
+              $ {stolenMoney.toFixed(2)}
+            </div>
+            <button onClick={handleReport} className="text-red-400 text-xl hover:text-red-300" title="檢舉">🚨</button>
+            <button onClick={handleLeave} className="text-gray-300 text-xl hover:text-white" title="離開">🚪</button>
           </div>
         )}
       </header>
@@ -133,7 +138,7 @@ export default function App() {
                 value={hourlyWage}
                 onChange={(e) => setHourlyWage(e.target.value)}
                 placeholder="例如: 250"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-xl bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-xl bg-gray-50 text-base"
               />
             </div>
 
@@ -144,7 +149,7 @@ export default function App() {
                 id="agreement" 
                 checked={isAgreed} 
                 onChange={(e) => setIsAgreed(e.target.checked)}
-                className="mt-1 w-4 h-4 text-blue-600 rounded cursor-pointer" 
+                className="mt-1 w-4 h-4 text-blue-600 rounded cursor-pointer shrink-0" 
               />
               <label htmlFor="agreement" className="text-sm text-gray-700 cursor-pointer select-none leading-relaxed">
                 我承諾不發送騷擾、色情或違法訊息，並尊重每一位認真摸魚的薪水小偷。若遭檢舉將被踢出互助會。
@@ -173,6 +178,7 @@ export default function App() {
       {appState === 'CHATTING' && (
         <div className="flex-1 flex flex-col overflow-hidden relative">
           
+          {/* 對話顯示區 */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'me' ? 'justify-end' : msg.sender === 'system' ? 'justify-center' : 'justify-start'}`}>
@@ -190,40 +196,24 @@ export default function App() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="bg-white p-3 border-t shadow-lg z-10 relative">
+          {/* 底部輸入區（瘦身版，只留輸入框跟傳送） */}
+          <div className="bg-white p-3 border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 relative shrink-0">
             
-            {/* 這裡就是浮水印 */}
-            <div className="text-center text-gray-400 text-xs font-medium mb-2 tracking-widest select-none">
+            <div className="text-center text-gray-400 text-[10px] font-medium mb-2 tracking-widest select-none">
               薪水小偷互助會 by @fourzpoem
             </div>
 
             <form onSubmit={handleSendMessage} className="flex gap-2">
-              <button 
-                type="button" 
-                onClick={handleReport} 
-                className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-2 rounded-lg font-medium transition text-sm flex items-center"
-                title="檢舉此用戶"
-              >
-                🚨 檢舉
-              </button>
-              
-              <button 
-                type="button" 
-                onClick={handleLeave} 
-                className="bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 px-4 py-2 rounded-lg font-medium transition text-sm"
-              >
-                離開
-              </button>
-              
               <input
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder="輸入訊息一起摸魚..."
-                className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                /* 這裡的 text-base 是關鍵！防止 iPhone 點擊時自動放大畫面 */
+                className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />
-              <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition shadow-md">
-                發送
+              <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full font-medium transition shadow-md shrink-0">
+                傳送
               </button>
             </form>
           </div>

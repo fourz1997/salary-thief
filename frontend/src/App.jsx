@@ -27,8 +27,7 @@ export default function App() {
   const [isAgreed, setIsAgreed] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // 🌟【移除所有複雜的視覺鎖定，回歸最純粹的狀態】
-  // 我們不再強制鎖死 document.body，讓 IG 內建瀏覽器保有它的原生滾動能力
+  // 🌟 移除了所有會讓畫面跳動的 window 監聽器與滾動指令！
 
   useEffect(() => {
     sessionStorage.setItem('st_appState', appState);
@@ -53,10 +52,11 @@ export default function App() {
     return () => clearInterval(timer);
   }, [appState, hourlyWage]);
 
+  // 只有對話框內部的訊息列表會平順滾動，整個網頁不再跟著亂跳
   const scrollToBottom = () => {
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    }, 50);
   };
 
   useEffect(() => {
@@ -158,31 +158,17 @@ export default function App() {
     }
   };
 
-  // 🌟【IG/Threads 專用：強制捲動大法】
-  const handleInputFocus = () => {
-    setTimeout(() => {
-      // 1. 命令整個網頁滾到最下面
-      window.scrollTo({
-        top: document.documentElement.scrollHeight,
-        behavior: 'smooth'
-      });
-      // 2. 命令對話框滾到最下面
-      scrollToBottom();
-    }, 300); // 給鍵盤 0.3 秒的彈出時間
-  };
-
-  // 修復 iOS 收起鍵盤後，下面留下一大片白色的 Bug
-  const handleInputBlur = () => {
-    setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 100);
-  };
-
-  // 使用 h-[100dvh] 讓現代瀏覽器動態適應，同時解開 position: fixed
   return (
-    <div className="flex flex-col h-[100dvh] bg-gray-100 font-sans w-full relative">
+    <div 
+      className="flex flex-col bg-gray-100 font-sans w-full"
+      style={{ 
+        // 🌟 終極魔法：使用 dvh 並搭配蘋果專屬的 -webkit-fill-available
+        // 這會讓容器永遠貼合真實的「可用螢幕範圍」，不用寫任何跳動的 JS！
+        height: '100dvh',
+        minHeight: '-webkit-fill-available'
+      }}
+    >
       <header className="bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-10 shrink-0">
-        {/* 薪水兩個字已經完美補上 */}
         <h1 className="text-lg font-bold tracking-wider truncate">🕵️‍♂️ 薪水小偷互助會</h1>
         {appState === 'CHATTING' && (
           <div className="flex items-center gap-3 shrink-0">
@@ -271,9 +257,8 @@ export default function App() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                /* 🌟 套用這兩個終極防禦機制 */
-                onFocus={handleInputFocus}
-                onBlur={handleInputBlur}
+                /* 點擊輸入框時，只要求內部的聊天紀錄滾到底部，不影響外部網頁 */
+                onFocus={scrollToBottom}
                 placeholder="輸入訊息一起摸魚..."
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />

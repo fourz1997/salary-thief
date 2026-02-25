@@ -1,52 +1,103 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-// 連接到後端伺服器 (請確認這裡是你的 Render 網址)
+// 1. 發放專屬身分證：用瀏覽器的 Session 記住你是誰 (重整不會消失，關閉分頁才會)
+const getUserId = () => {
+  let id = sessionStorage.getItem('st_userId');
+  if (!id) {
+    id = Math.random().toString(36).substring(2, 15);
+    sessionStorage.setItem('st_userId', id);
+  }
+  return id;
+};
+
+const userId = getUserId();
+// ⚠️ 請確保這裡是你的 Render 網址
 const socket = io('https://salary-thief-backend.onrender.com');
 
 export default function App() {
-  const [appState, setAppState] = useState('ENTRY'); 
-  const [hourlyWage, setHourlyWage] = useState('');
+  // 2. 狀態升級：優先從手機記憶卡讀取之前的狀態
+  const [appState, setAppState] = useState(() => {
+    const saved = sessionStorage.getItem('st_appState');
+    // 如果重整前是在聊天，就保持聊天；其他狀態一律退回首頁防卡死
+    return saved === 'CHATTING' ? 'CHATTING' : 'ENTRY';
+  });
+  
+  const [hourlyWage, setHourlyWage] = useState(() => sessionStorage.getItem('st_wage') || '');
   const [stolenMoney, setStolenMoney] = useState(0);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isAgreed, setIsAgreed] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // 計算摸魚薪水
+  // 當狀態改變時，隨時存進記憶卡
+  useEffect(() => {
+    sessionStorage.setItem('st_appState', appState);
+    if (hourlyWage) sessionStorage.setItem('st_wage', hourlyWage);
+  }, [appState, hourlyWage]);
+
+  // 3. 計時器升級：用「真實時間差」計算，重整也不怕漏算錢！
   useEffect(() => {
     let timer;
     if (appState === 'CHATTING' && hourlyWage > 0) {
+      let startTime = sessionStorage.getItem('st_startTime');
+      if (!startTime) {
+        startTime = Date.now();
+        sessionStorage.setItem('st_startTime', startTime);
+      }
+
       const moneyPerSecond = Number(hourlyWage) / 3600;
       timer = setInterval(() => {
-        setStolenMoney(prev => prev + moneyPerSecond);
+        const elapsedSeconds = (Date.now() - parseInt(startTime)) / 1000;
+        setStolenMoney(elapsedSeconds * moneyPerSecond);
       }, 1000);
     }
     return () => clearInterval(timer);
   }, [appState, hourlyWage]);
 
-  // 👇 新增這個「滾動到底部」的專屬神兵利器
   const scrollToBottom = () => {
-    // 設定 100 毫秒的延遲，刻意等手機鍵盤的動畫彈完後，再精準滾到底部
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   };
 
-  // 當有新訊息時，自動滾到底
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
   // Socket 事件監聽
   useEffect(() => {
+    // 一連線，立刻向大腦報上身分證號碼
+    socket.on('connect', () => {
+      socket.emit('register_user', userId);
+    });
+    if (socket.connected) {
+      socket.emit('register_user', userId);
+    }
+
+    // 🌟 收到大腦傳來的重連成功與歷史紀錄
+    socket.on('reconnect_success', (historyMessages) => {
+      setAppState('CHATTING');
+      // 將歷史紀錄轉換成畫面看得懂的格式
+      const formattedMessages = historyMessages.map(msg => ({
+        sender: msg.senderId === userId ? 'me' : 'stranger',
+        text: msg.text
+      }));
+      setMessages([
+        { sender: 'system', text: '⚡️ 重新連線成功，已還原對話。' },
+        ...formattedMessages
+      ]);
+    });
+
     socket.on('chat_start', () => {
       setAppState('CHATTING');
+      sessionStorage.setItem('st_startTime', Date.now()); // 記錄進去房間的精準時間
       setMessages([{ sender: 'system', text: '已加入聊天室，正在和另一位薪水小偷連線。' }]);
     });
 
-    socket.on('receive_message', (msg) => {
-      setMessages(prev => [...prev, { sender: 'stranger', text: msg }]);
+    socket.on('receive_message', (msgData) => {
+      // 後端現在傳來的是物件 { senderId, text }
+      setMessages(prev => [...prev, { sender: 'stranger', text: msgData.text }]);
     });
 
     socket.on('partner_left', () => {
@@ -54,6 +105,8 @@ export default function App() {
     });
 
     return () => {
+      socket.off('connect');
+      socket.off('reconnect_success');
       socket.off('chat_start');
       socket.off('receive_message');
       socket.off('partner_left');
@@ -70,6 +123,7 @@ export default function App() {
       return;
     }
     setAppState('WAITING');
+    socket.emit('register_user', userId); // 確保大腦知道是誰在排隊
     socket.emit('find_partner');
   };
 
@@ -80,9 +134,19 @@ export default function App() {
     setMessages(prev => [...prev, { sender: 'me', text: inputValue }]);
     socket.emit('send_message', inputValue);
     setInputValue('');
-    
-    // 發送訊息後，為了怕有些手機不自動縮鍵盤，再強制滾動一次
     scrollToBottom(); 
+  };
+
+  // 離開時要清空記憶卡，免得下次一進來又卡在舊房間
+  const resetChat = () => {
+    setAppState('ENTRY');
+    setStolenMoney(0);
+    setMessages([]);
+    setHourlyWage('');
+    setIsAgreed(false);
+    sessionStorage.removeItem('st_appState');
+    sessionStorage.removeItem('st_startTime');
+    sessionStorage.removeItem('st_wage');
   };
 
   const handleLeave = () => {
@@ -100,14 +164,6 @@ export default function App() {
         alert('已成功檢舉並離開該聊天室。感謝您協助維護互助會的優質摸魚環境！');
       }, 100);
     }
-  };
-
-  const resetChat = () => {
-    setAppState('ENTRY');
-    setStolenMoney(0);
-    setMessages([]);
-    setHourlyWage('');
-    setIsAgreed(false);
   };
 
   return (
@@ -192,7 +248,6 @@ export default function App() {
           </div>
 
           <div className="bg-white p-3 border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 relative shrink-0">
-            
             <div className="text-center text-gray-400 text-[10px] font-medium mb-2 tracking-widest select-none">
               薪水小偷互助會 by @fourzpoem
             </div>
@@ -202,7 +257,7 @@ export default function App() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                onFocus={scrollToBottom}  /* 👈 關鍵秘技：點擊輸入框時，立刻滾動到底部 */
+                onFocus={scrollToBottom}
                 placeholder="輸入訊息一起摸魚..."
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />

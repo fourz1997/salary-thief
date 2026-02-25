@@ -12,6 +12,11 @@ export default function App() {
   const [inputValue, setInputValue] = useState('');
   const [isAgreed, setIsAgreed] = useState(false); // 新增：是否同意公約
   const messagesEndRef = useRef(null);
+  const watermarkStyle = {
+    backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='350' height='200'><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='rgba(0, 0, 0, 0.04)' font-size='16' font-family='sans-serif' font-weight='bold' letter-spacing='1' transform='rotate(-25, 175, 100)'>薪水小偷互助會 by @fourzpoem</text></svg>")`,
+    backgroundRepeat: 'repeat',
+    backgroundPosition: 'center',
+  };
 
   // 計算摸魚薪水
   useEffect(() => {
@@ -164,10 +169,15 @@ export default function App() {
         </div>
       )}
 
-      {/* 聊天畫面 */}
+ {/* 聊天畫面 */}
       {appState === 'CHATTING' && (
         <div className="flex-1 flex flex-col overflow-hidden relative">
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+          
+          {/* 訊息顯示區塊（加入滿版浮水印） */}
+          <div 
+            className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50"
+            style={watermarkStyle}
+          >
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'me' ? 'justify-end' : msg.sender === 'system' ? 'justify-center' : 'justify-start'}`}>
                 {msg.sender === 'system' ? (
@@ -184,9 +194,9 @@ export default function App() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="bg-white p-3 border-t shadow-lg z-10">
+          {/* 輸入框區塊 */}
+          <div className="bg-white p-3 border-t shadow-lg z-10 relative">
             <form onSubmit={handleSendMessage} className="flex gap-2">
-              {/* 新增檢舉按鈕 */}
               <button 
                 type="button" 
                 onClick={handleReport} 
@@ -218,6 +228,3 @@ export default function App() {
           </div>
         </div>
       )}
-    </div>
-  );
-}

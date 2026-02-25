@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-// 發放專屬身分證
 const getUserId = () => {
   let id = sessionStorage.getItem('st_userId');
   if (!id) {
@@ -12,7 +11,7 @@ const getUserId = () => {
 };
 
 const userId = getUserId();
-// ⚠️ 確認這是你的 Render 網址
+// ⚠️ 確認這裡是你的 Render 網址
 const socket = io('https://salary-thief-backend.onrender.com');
 
 export default function App() {
@@ -28,26 +27,29 @@ export default function App() {
   const [isAgreed, setIsAgreed] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // 🌟【關鍵魔法 1】：動態偵測真實的螢幕高度 (扣除鍵盤後的高度)
+  // 🌟【終極版鍵盤魔法】：同時支援 iOS 與 Android
   useEffect(() => {
-    const setViewportHeight = () => {
-      if (window.visualViewport) {
-        // 將扣除鍵盤後的「真實高度」存成一個 CSS 變數 --vh
-        document.documentElement.style.setProperty('--vh', `${window.visualViewport.height}px`);
-      }
+    const updateHeight = () => {
+      // 優先使用 visualViewport (iOS)，退而求其次用 innerHeight (Android三星)
+      const currentHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      document.documentElement.style.setProperty('--vh', `${currentHeight}px`);
     };
 
+    updateHeight(); // 網頁載入先抓一次高度
+
+    // 同時監聽兩種系統的「螢幕變形」事件
+    window.addEventListener('resize', updateHeight);
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', setViewportHeight);
-      setViewportHeight(); // 初始化先抓一次
+      window.visualViewport.addEventListener('resize', updateHeight);
     }
 
-    // 強制把網頁底層的滾動條關掉，避免 iOS 亂滑動
+    // 防止網頁背景亂滾動
     document.body.style.overflow = 'hidden';
 
     return () => {
+      window.removeEventListener('resize', updateHeight);
       if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', setViewportHeight);
+        window.visualViewport.removeEventListener('resize', updateHeight);
       }
       document.body.style.overflow = 'auto';
     };
@@ -181,15 +183,12 @@ export default function App() {
     }
   };
 
-  // 🌟【關鍵魔法 2】：把網頁「釘死」在螢幕上，高度套用我們剛剛抓到的 --vh
+  // 🌟【關鍵修改】：解開 Android 的封印，拿掉 position: fixed
   return (
     <div 
       className="flex flex-col bg-gray-100 font-sans w-full overflow-hidden"
       style={{ 
-        height: 'var(--vh, 100dvh)', // 吃我們算好的真實高度
-        position: 'fixed',           // 釘死在畫面上，不讓瀏覽器亂動
-        top: 0,
-        left: 0
+        height: 'var(--vh, 100dvh)' // 自動變形！不強制釘死，讓 Android 可以自己往上推
       }}
     >
       <header className="bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-10 shrink-0">
@@ -281,8 +280,13 @@ export default function App() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                /* 🌟 鍵盤彈出需要一點動畫時間，我們等 300 毫秒後再滾動到底部，確保畫面最完美 */
-                onFocus={() => setTimeout(scrollToBottom, 300)}
+                /* 🌟 加強力道：除了滾動對話，也要求瀏覽器把輸入框滑進可視範圍 */
+                onFocus={(e) => {
+                  setTimeout(() => {
+                    e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    scrollToBottom();
+                  }, 300);
+                }}
                 placeholder="輸入訊息一起摸魚..."
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />

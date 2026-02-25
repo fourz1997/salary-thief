@@ -195,7 +195,7 @@ export default function App() {
           <div className="bg-white p-3 border-t shadow-lg z-10 relative">
             
             {/* 👇 這邊就是你專屬的低調浮水印 */}
-            <div className="text-center text-gray-300 text-xs font-medium mb-2 tracking-widest select-none">
+            <div className="text-center text-gray-400 text-xs font-medium mb-2 tracking-widest select-none">
               薪水小偷互助會 by @fourzpoem
             </div>
 

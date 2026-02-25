@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 
 const getUserId = () => {
@@ -25,47 +25,15 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isAgreed, setIsAgreed] = useState(false);
-  const messagesEndRef = useRef(null);
 
-  // 🌟【終極大絕招：用 JavaScript 監聽並強制改變網頁的真實高度】
-  const [viewportHeight, setViewportHeight] = useState('100vh'); // 初始設定為整個螢幕高
+  // 🌟【移除所有複雜的 JS 高度計算與鎖定】
+  // 我們讓瀏覽器回歸最原始的本能！
 
-  useEffect(() => {
-    const handleResize = () => {
-      // 只要發現有可視範圍 (visualViewport) 存在，我們就只用這個「真實能看見的高度」
-      if (window.visualViewport) {
-        setViewportHeight(`${window.visualViewport.height}px`);
-        window.scrollTo(0, 0); // 防禦機制：如果有其他程式想把它往上推，我們強迫它在原地待好
-      } else {
-        setViewportHeight(`${window.innerHeight}px`);
-      }
-    };
-
-    handleResize(); // 網頁載入時立刻抓取一次高度
-
-    // 監聽各種「鍵盤彈出 / 收合 / 手機旋轉」的尺寸變化
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize);
-      window.visualViewport.addEventListener('scroll', handleResize); // IG 常常是用卷動事件偷蓋
-    }
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleResize);
-        window.visualViewport.removeEventListener('scroll', handleResize);
-      }
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
-
-  // 當狀態改變時，隨時存進記憶卡
   useEffect(() => {
     sessionStorage.setItem('st_appState', appState);
     if (hourlyWage) sessionStorage.setItem('st_wage', hourlyWage);
   }, [appState, hourlyWage]);
 
-  // 3. 計時器升級：用「真實時間差」計算，重整也不怕漏算錢！
   useEffect(() => {
     let timer;
     if (appState === 'CHATTING' && hourlyWage > 0) {
@@ -84,9 +52,10 @@ export default function App() {
     return () => clearInterval(timer);
   }, [appState, hourlyWage]);
 
+  // 🌟 改成滾動「整個網頁」到底部，而不是只滾動內部區塊
   const scrollToBottom = () => {
     setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
     }, 100);
   };
 
@@ -94,9 +63,7 @@ export default function App() {
     scrollToBottom();
   }, [messages]);
 
-  // Socket 事件監聽
   useEffect(() => {
-    // 一連線，立刻向大腦報上身分證號碼
     socket.on('connect', () => {
       socket.emit('register_user', userId);
     });
@@ -104,10 +71,8 @@ export default function App() {
       socket.emit('register_user', userId);
     }
 
-    // 🌟 收到大腦傳來的重連成功與歷史紀錄
     socket.on('reconnect_success', (historyMessages) => {
       setAppState('CHATTING');
-      // 將歷史紀錄轉換成畫面看得懂的格式
       const formattedMessages = historyMessages.map(msg => ({
         sender: msg.senderId === userId ? 'me' : 'stranger',
         text: msg.text
@@ -120,12 +85,11 @@ export default function App() {
 
     socket.on('chat_start', () => {
       setAppState('CHATTING');
-      sessionStorage.setItem('st_startTime', Date.now()); // 記錄進去房間的精準時間
+      sessionStorage.setItem('st_startTime', Date.now());
       setMessages([{ sender: 'system', text: '已加入聊天室，正在和另一位薪水小偷連線。' }]);
     });
 
     socket.on('receive_message', (msgData) => {
-      // 後端現在傳來的是物件 { senderId, text }
       setMessages(prev => [...prev, { sender: 'stranger', text: msgData.text }]);
     });
 
@@ -148,11 +112,11 @@ export default function App() {
       return;
     }
     if (!isAgreed) {
-      alert('請先閱讀並勾選同意互助會公約，才能開始摸魚喔！');
+      alert('alert請先閱讀並勾選同意互助會公約，才能開始摸魚喔！');
       return;
     }
     setAppState('WAITING');
-    socket.emit('register_user', userId); // 確保大腦知道是誰在排隊
+    socket.emit('register_user', userId);
     socket.emit('find_partner');
   };
 
@@ -166,7 +130,6 @@ export default function App() {
     scrollToBottom(); 
   };
 
-  // 離開時要清空記憶卡，免得下次一進來又卡在舊房間
   const resetChat = () => {
     setAppState('ENTRY');
     setStolenMoney(0);
@@ -195,21 +158,12 @@ export default function App() {
     }
   };
 
-  // 🌟【排版設計的防禦堡壘】將最外層鎖死為絕對定位，並動態吃我們計算出的高度
+  // 🌟【設計核心改變】：不再限制 overflow: hidden，讓這是一個「會自然變長的網頁」
   return (
-    <div 
-      className="flex flex-col bg-gray-100 font-sans w-full"
-      style={{
-        height: viewportHeight, // 這裡會因為鍵盤彈出而「動態」變短，完全不吃 dvh 或 CSS 變數
-        position: 'absolute',   // 鎖死絕對定位，它就只能乖乖待在頂部
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        overflow: 'hidden'      // 封殺所有的滾動行為，不留任何讓畫面跳動的機會
-      }}
-    >
-      <header className="bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-10 shrink-0">
+    <div className="flex flex-col min-h-[100dvh] bg-gray-100 font-sans w-full">
+      
+      {/* 標題列：使用 sticky 黏在頂部 */}
+      <header className="sticky top-0 bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-50">
         <h1 className="text-lg font-bold tracking-wider truncate">🕵️‍♂️ 薪水小偷互助會</h1>
         {appState === 'CHATTING' && (
           <div className="flex items-center gap-3 shrink-0">
@@ -222,11 +176,11 @@ export default function App() {
         )}
       </header>
 
+      {/* 畫面渲染 */}
       {appState === 'ENTRY' && (
-        <div className="flex-1 flex flex-col justify-center items-center p-4">
+        <main className="flex-1 flex flex-col justify-center items-center p-4">
           <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center">
             <h2 className="text-2xl font-bold mb-6 text-gray-800">開始摸魚</h2>
-            
             <div className="mb-6">
               <label className="block text-gray-600 text-sm mb-2 font-medium">你的換算時薪 (NTD)</label>
               <input 
@@ -237,7 +191,6 @@ export default function App() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-xl bg-gray-50 text-base"
               />
             </div>
-
             <div className="mb-6 flex items-start gap-3 text-left bg-blue-50 p-3 rounded-lg border border-blue-100">
               <input 
                 type="checkbox" 
@@ -250,7 +203,6 @@ export default function App() {
                 我承諾不發送騷擾、色情或違法訊息，並尊重每一位認真摸魚的薪水小偷。若遭檢舉將被踢出互助會。
               </label>
             </div>
-
             <button 
               onClick={handleStartMatching}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-md flex justify-center items-center gap-2"
@@ -258,20 +210,20 @@ export default function App() {
               🔍 尋找摸魚共犯
             </button>
           </div>
-        </div>
+        </main>
       )}
 
       {appState === 'WAITING' && (
-        <div className="flex-1 flex flex-col justify-center items-center">
+        <main className="flex-1 flex flex-col justify-center items-center">
           <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600 mb-4"></div>
           <p className="text-gray-600 font-medium text-lg">正在為您尋找同樣在偷懶的同事...</p>
-        </div>
+        </main>
       )}
 
       {appState === 'CHATTING' && (
-        <div className="flex-1 flex flex-col overflow-hidden relative">
-          
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 pb-4">
+        <>
+          {/* 對話區塊：拿掉 overflow-y-auto，讓整個網頁自然撐開變長 */}
+          <main className="flex-1 p-4 space-y-4 bg-gray-50 pb-6">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'me' ? 'justify-end' : msg.sender === 'system' ? 'justify-center' : 'justify-start'}`}>
                 {msg.sender === 'system' ? (
@@ -285,19 +237,19 @@ export default function App() {
                 )}
               </div>
             ))}
-            <div ref={messagesEndRef} />
-          </div>
+          </main>
 
-          <div className="bg-white p-3 border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] shrink-0 z-10">
+          {/* 輸入框區塊：使用 sticky bottom-0 讓它黏在網頁可視範圍的最底部 */}
+          <footer className="sticky bottom-0 bg-white p-3 border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-50">
             <div className="text-center text-gray-400 text-[10px] font-medium mb-2 tracking-widest select-none">
               薪水小偷互助會 by @fourzpoem
             </div>
-
             <form onSubmit={handleSendMessage} className="flex gap-2">
               <input
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
+                /* 🌟 完全移除 onFocus 事件！把工作交還給手機原生瀏覽器去推動畫面 */
                 placeholder="輸入訊息一起摸魚..."
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />
@@ -305,8 +257,8 @@ export default function App() {
                 傳送
               </button>
             </form>
-          </div>
-        </div>
+          </footer>
+        </>
       )}
     </div>
   );

@@ -27,13 +27,45 @@ export default function App() {
   const [isAgreed, setIsAgreed] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // 🌟 移除了所有會讓畫面跳動的 window 監聽器與滾動指令！
+  // 🌟【終極大絕招：用 JavaScript 監聽並強制改變網頁的真實高度】
+  const [viewportHeight, setViewportHeight] = useState('100vh'); // 初始設定為整個螢幕高
 
+  useEffect(() => {
+    const handleResize = () => {
+      // 只要發現有可視範圍 (visualViewport) 存在，我們就只用這個「真實能看見的高度」
+      if (window.visualViewport) {
+        setViewportHeight(`${window.visualViewport.height}px`);
+        window.scrollTo(0, 0); // 防禦機制：如果有其他程式想把它往上推，我們強迫它在原地待好
+      } else {
+        setViewportHeight(`${window.innerHeight}px`);
+      }
+    };
+
+    handleResize(); // 網頁載入時立刻抓取一次高度
+
+    // 監聽各種「鍵盤彈出 / 收合 / 手機旋轉」的尺寸變化
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize);
+      window.visualViewport.addEventListener('scroll', handleResize); // IG 常常是用卷動事件偷蓋
+    }
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleResize);
+        window.visualViewport.removeEventListener('scroll', handleResize);
+      }
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  // 當狀態改變時，隨時存進記憶卡
   useEffect(() => {
     sessionStorage.setItem('st_appState', appState);
     if (hourlyWage) sessionStorage.setItem('st_wage', hourlyWage);
   }, [appState, hourlyWage]);
 
+  // 3. 計時器升級：用「真實時間差」計算，重整也不怕漏算錢！
   useEffect(() => {
     let timer;
     if (appState === 'CHATTING' && hourlyWage > 0) {
@@ -52,18 +84,19 @@ export default function App() {
     return () => clearInterval(timer);
   }, [appState, hourlyWage]);
 
-  // 只有對話框內部的訊息列表會平順滾動，整個網頁不再跟著亂跳
   const scrollToBottom = () => {
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 50);
+    }, 100);
   };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
+  // Socket 事件監聽
   useEffect(() => {
+    // 一連線，立刻向大腦報上身分證號碼
     socket.on('connect', () => {
       socket.emit('register_user', userId);
     });
@@ -71,8 +104,10 @@ export default function App() {
       socket.emit('register_user', userId);
     }
 
+    // 🌟 收到大腦傳來的重連成功與歷史紀錄
     socket.on('reconnect_success', (historyMessages) => {
       setAppState('CHATTING');
+      // 將歷史紀錄轉換成畫面看得懂的格式
       const formattedMessages = historyMessages.map(msg => ({
         sender: msg.senderId === userId ? 'me' : 'stranger',
         text: msg.text
@@ -85,11 +120,12 @@ export default function App() {
 
     socket.on('chat_start', () => {
       setAppState('CHATTING');
-      sessionStorage.setItem('st_startTime', Date.now());
+      sessionStorage.setItem('st_startTime', Date.now()); // 記錄進去房間的精準時間
       setMessages([{ sender: 'system', text: '已加入聊天室，正在和另一位薪水小偷連線。' }]);
     });
 
     socket.on('receive_message', (msgData) => {
+      // 後端現在傳來的是物件 { senderId, text }
       setMessages(prev => [...prev, { sender: 'stranger', text: msgData.text }]);
     });
 
@@ -116,7 +152,7 @@ export default function App() {
       return;
     }
     setAppState('WAITING');
-    socket.emit('register_user', userId);
+    socket.emit('register_user', userId); // 確保大腦知道是誰在排隊
     socket.emit('find_partner');
   };
 
@@ -130,6 +166,7 @@ export default function App() {
     scrollToBottom(); 
   };
 
+  // 離開時要清空記憶卡，免得下次一進來又卡在舊房間
   const resetChat = () => {
     setAppState('ENTRY');
     setStolenMoney(0);
@@ -158,14 +195,18 @@ export default function App() {
     }
   };
 
+  // 🌟【排版設計的防禦堡壘】將最外層鎖死為絕對定位，並動態吃我們計算出的高度
   return (
     <div 
       className="flex flex-col bg-gray-100 font-sans w-full"
-      style={{ 
-        // 🌟 終極魔法：使用 dvh 並搭配蘋果專屬的 -webkit-fill-available
-        // 這會讓容器永遠貼合真實的「可用螢幕範圍」，不用寫任何跳動的 JS！
-        height: '100dvh',
-        minHeight: '-webkit-fill-available'
+      style={{
+        height: viewportHeight, // 這裡會因為鍵盤彈出而「動態」變短，完全不吃 dvh 或 CSS 變數
+        position: 'absolute',   // 鎖死絕對定位，它就只能乖乖待在頂部
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        overflow: 'hidden'      // 封殺所有的滾動行為，不留任何讓畫面跳動的機會
       }}
     >
       <header className="bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-10 shrink-0">
@@ -257,8 +298,6 @@ export default function App() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                /* 點擊輸入框時，只要求內部的聊天紀錄滾到底部，不影響外部網頁 */
-                onFocus={scrollToBottom}
                 placeholder="輸入訊息一起摸魚..."
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />

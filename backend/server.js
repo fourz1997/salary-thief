@@ -11,7 +11,7 @@ const server = http.createServer(app);
 // 設定 Socket.io 允許跨域請求
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173", // Vite 預設 port
+    origin: "*", // 改成星號，代表允許所有網域連線
     methods: ["GET", "POST"]
   }
 });
@@ -76,7 +76,7 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`後端伺服器運行於 port ${PORT}`);
 });

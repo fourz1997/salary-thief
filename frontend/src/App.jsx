@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
 // 連接到後端伺服器
-const socket = io('http://localhost:3001');
+const socket = io('https://salary-thief-backend.onrender.com');
 
 export default function App() {
   const [appState, setAppState] = useState('ENTRY'); // ENTRY, WAITING, CHATTING

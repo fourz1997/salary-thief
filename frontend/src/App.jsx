@@ -214,7 +214,7 @@ export default function App() {
       }}
     >
       <header className="bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-10 shrink-0">
-        <h1 className="text-lg font-bold tracking-wider truncate">🕵️‍♂️ 小偷互助會</h1>
+        <h1 className="text-lg font-bold tracking-wider truncate">🕵️‍♂️ 薪水小偷互助會</h1>
         {appState === 'CHATTING' && (
           <div className="flex items-center gap-3 shrink-0">
             <div className="bg-green-500 text-gray-900 px-3 py-1 rounded-full font-mono font-bold text-sm animate-pulse shadow border border-green-400">

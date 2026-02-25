@@ -169,11 +169,10 @@ export default function App() {
         </div>
       )}
 
-{/* 聊天畫面 */}
+      {/* 聊天畫面 */}
       {appState === 'CHATTING' && (
         <div className="flex-1 flex flex-col overflow-hidden relative">
           
-          {/* 訊息顯示區塊（拿掉滿版背景了） */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'me' ? 'justify-end' : msg.sender === 'system' ? 'justify-center' : 'justify-start'}`}>
@@ -191,10 +190,9 @@ export default function App() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* 輸入框區塊 */}
           <div className="bg-white p-3 border-t shadow-lg z-10 relative">
             
-            {/* 👇 這邊就是你專屬的低調浮水印 */}
+            {/* 這裡就是浮水印 */}
             <div className="text-center text-gray-400 text-xs font-medium mb-2 tracking-widest select-none">
               薪水小偷互助會 by @fourzpoem
             </div>
@@ -231,3 +229,6 @@ export default function App() {
           </div>
         </div>
       )}
+    </div>
+  );
+}

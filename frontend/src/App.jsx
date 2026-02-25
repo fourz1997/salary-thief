@@ -27,31 +27,47 @@ export default function App() {
   const [isAgreed, setIsAgreed] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // 🌟【終極版鍵盤魔法】：同時支援 iOS 與 Android
+  // 🌟【IG/Threads 內建瀏覽器終極殺手鐧】
   useEffect(() => {
-    const updateHeight = () => {
-      // 優先使用 visualViewport (iOS)，退而求其次用 innerHeight (Android三星)
-      const currentHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-      document.documentElement.style.setProperty('--vh', `${currentHeight}px`);
+    const updateViewport = () => {
+      if (window.visualViewport) {
+        // 1. 抓取扣除鍵盤後的真實高度
+        document.documentElement.style.setProperty('--vh', `${window.visualViewport.height}px`);
+        // 2. 抓取 IG/Threads 暴力把網頁往上推的「偏移量」
+        document.documentElement.style.setProperty('--offset', `${window.visualViewport.offsetTop}px`);
+      } else {
+        document.documentElement.style.setProperty('--vh', `${window.innerHeight}px`);
+        document.documentElement.style.setProperty('--offset', `0px`);
+      }
     };
 
-    updateHeight(); // 網頁載入先抓一次高度
+    updateViewport(); // 初始化先抓一次
 
-    // 同時監聽兩種系統的「螢幕變形」事件
-    window.addEventListener('resize', updateHeight);
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', updateHeight);
+      window.visualViewport.addEventListener('resize', updateViewport);
+      // 🌟 針對 iOS In-App Browser 必須額外監聽 scroll 事件
+      window.visualViewport.addEventListener('scroll', updateViewport); 
+    } else {
+      window.addEventListener('resize', updateViewport);
     }
 
-    // 防止網頁背景亂滾動
+    // 🌟 徹底鎖死底層，防止 IG 內建瀏覽器亂滾動
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
 
     return () => {
-      window.removeEventListener('resize', updateHeight);
       if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', updateHeight);
+        window.visualViewport.removeEventListener('resize', updateViewport);
+        window.visualViewport.removeEventListener('scroll', updateViewport);
+      } else {
+        window.removeEventListener('resize', updateViewport);
       }
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.height = '';
     };
   }, []);
 
@@ -183,12 +199,18 @@ export default function App() {
     }
   };
 
-  // 🌟【關鍵修改】：解開 Android 的封印，拿掉 position: fixed
+  // 🌟【終極版式設定】：讓整個 App 變成一個絕對定位的浮動框，動態追蹤可視範圍
   return (
     <div 
       className="flex flex-col bg-gray-100 font-sans w-full overflow-hidden"
       style={{ 
-        height: 'var(--vh, 100dvh)' // 自動變形！不強制釘死，讓 Android 可以自己往上推
+        position: 'fixed',
+        left: 0,
+        // 這裡會動態抓取 IG 推上去的距離，把它補回來！
+        top: 'var(--offset, 0px)',
+        // 這裡吃精準計算後的高度
+        height: 'var(--vh, 100dvh)',
+        width: '100%'
       }}
     >
       <header className="bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-10 shrink-0">
@@ -280,13 +302,8 @@ export default function App() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                /* 🌟 加強力道：除了滾動對話，也要求瀏覽器把輸入框滑進可視範圍 */
-                onFocus={(e) => {
-                  setTimeout(() => {
-                    e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    scrollToBottom();
-                  }, 300);
-                }}
+                /* 點擊輸入時讓畫面自動滾到底，不使用額外的 ScrollIntoView 以免和絕對定位打架 */
+                onFocus={() => setTimeout(scrollToBottom, 200)}
                 placeholder="輸入訊息一起摸魚..."
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />

@@ -1,22 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-// 連接到後端伺服器
+// 連接到後端伺服器 (請確認這裡是你的 Render 網址)
 const socket = io('https://salary-thief-backend.onrender.com');
 
 export default function App() {
-  const [appState, setAppState] = useState('ENTRY'); // ENTRY, WAITING, CHATTING
+  const [appState, setAppState] = useState('ENTRY'); 
   const [hourlyWage, setHourlyWage] = useState('');
   const [stolenMoney, setStolenMoney] = useState(0);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
-  const [isAgreed, setIsAgreed] = useState(false); // 新增：是否同意公約
+  const [isAgreed, setIsAgreed] = useState(false);
   const messagesEndRef = useRef(null);
-  const watermarkStyle = {
-    backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='350' height='200'><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='rgba(0, 0, 0, 0.04)' font-size='16' font-family='sans-serif' font-weight='bold' letter-spacing='1' transform='rotate(-25, 175, 100)'>薪水小偷互助會 by @fourzpoem</text></svg>")`,
-    backgroundRepeat: 'repeat',
-    backgroundPosition: 'center',
-  };
 
   // 計算摸魚薪水
   useEffect(() => {
@@ -30,9 +25,17 @@ export default function App() {
     return () => clearInterval(timer);
   }, [appState, hourlyWage]);
 
-  // 自動滾動到最新訊息
+  // 👇 新增這個「滾動到底部」的專屬神兵利器
+  const scrollToBottom = () => {
+    // 設定 100 毫秒的延遲，刻意等手機鍵盤的動畫彈完後，再精準滾到底部
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
+  // 當有新訊息時，自動滾到底
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollToBottom();
   }, [messages]);
 
   // Socket 事件監聽
@@ -57,7 +60,6 @@ export default function App() {
     };
   }, []);
 
-  // 尋找配對（加入安全卡控）
   const handleStartMatching = () => {
     if (!hourlyWage || isNaN(hourlyWage)) {
       alert('請先誠實輸入你的時薪（台幣）！');
@@ -78,9 +80,11 @@ export default function App() {
     setMessages(prev => [...prev, { sender: 'me', text: inputValue }]);
     socket.emit('send_message', inputValue);
     setInputValue('');
+    
+    // 發送訊息後，為了怕有些手機不自動縮鍵盤，再強制滾動一次
+    scrollToBottom(); 
   };
 
-  // 正常離開
   const handleLeave = () => {
     if (window.confirm(`你確定要回去工作了嗎？你剛剛總共偷了 $${stolenMoney.toFixed(2)} 元喔！`)) {
       socket.emit('leave_chat');
@@ -88,30 +92,26 @@ export default function App() {
     }
   };
 
-  // 檢舉並離開
   const handleReport = () => {
     if (window.confirm('遇到怪人了嗎？確定要檢舉對方並離開？系統將立即切斷連線。')) {
       socket.emit('leave_chat');
       resetChat();
-      // 延遲一下跳出感謝視窗，體驗更好
       setTimeout(() => {
         alert('已成功檢舉並離開該聊天室。感謝您協助維護互助會的優質摸魚環境！');
       }, 100);
     }
   };
 
-  // 重置狀態的共用函數
   const resetChat = () => {
     setAppState('ENTRY');
     setStolenMoney(0);
     setMessages([]);
     setHourlyWage('');
-    setIsAgreed(false); // 回到首頁時取消勾選
+    setIsAgreed(false);
   };
 
   return (
     <div className="flex flex-col h-[100dvh] bg-gray-100 font-sans">
-      {/* 標題列：把檢舉和離開按鈕搬到這裡，節省下方空間 */}
       <header className="bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-10 shrink-0">
         <h1 className="text-lg font-bold tracking-wider truncate">🕵️‍♂️ 小偷互助會</h1>
         {appState === 'CHATTING' && (
@@ -125,7 +125,6 @@ export default function App() {
         )}
       </header>
 
-      {/* 登入畫面 */}
       {appState === 'ENTRY' && (
         <div className="flex-1 flex flex-col justify-center items-center p-4">
           <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center">
@@ -142,7 +141,6 @@ export default function App() {
               />
             </div>
 
-            {/* 安全公約打勾區塊 */}
             <div className="mb-6 flex items-start gap-3 text-left bg-blue-50 p-3 rounded-lg border border-blue-100">
               <input 
                 type="checkbox" 
@@ -166,7 +164,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 等待畫面 */}
       {appState === 'WAITING' && (
         <div className="flex-1 flex flex-col justify-center items-center">
           <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600 mb-4"></div>
@@ -174,11 +171,9 @@ export default function App() {
         </div>
       )}
 
-      {/* 聊天畫面 */}
       {appState === 'CHATTING' && (
         <div className="flex-1 flex flex-col overflow-hidden relative">
           
-          {/* 對話顯示區 */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'me' ? 'justify-end' : msg.sender === 'system' ? 'justify-center' : 'justify-start'}`}>
@@ -196,7 +191,6 @@ export default function App() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* 底部輸入區（瘦身版，只留輸入框跟傳送） */}
           <div className="bg-white p-3 border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 relative shrink-0">
             
             <div className="text-center text-gray-400 text-[10px] font-medium mb-2 tracking-widest select-none">
@@ -208,8 +202,8 @@ export default function App() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
+                onFocus={scrollToBottom}  /* 👈 關鍵秘技：點擊輸入框時，立刻滾動到底部 */
                 placeholder="輸入訊息一起摸魚..."
-                /* 這裡的 text-base 是關鍵！防止 iPhone 點擊時自動放大畫面 */
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />
               <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full font-medium transition shadow-md shrink-0">

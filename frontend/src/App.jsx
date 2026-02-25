@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-// 1. 發放專屬身分證：用瀏覽器的 Session 記住你是誰 (重整不會消失，關閉分頁才會)
+// 發放專屬身分證
 const getUserId = () => {
   let id = sessionStorage.getItem('st_userId');
   if (!id) {
@@ -12,14 +12,12 @@ const getUserId = () => {
 };
 
 const userId = getUserId();
-// ⚠️ 請確保這裡是你的 Render 網址
+// ⚠️ 確認這是你的 Render 網址
 const socket = io('https://salary-thief-backend.onrender.com');
 
 export default function App() {
-  // 2. 狀態升級：優先從手機記憶卡讀取之前的狀態
   const [appState, setAppState] = useState(() => {
     const saved = sessionStorage.getItem('st_appState');
-    // 如果重整前是在聊天，就保持聊天；其他狀態一律退回首頁防卡死
     return saved === 'CHATTING' ? 'CHATTING' : 'ENTRY';
   });
   
@@ -30,13 +28,36 @@ export default function App() {
   const [isAgreed, setIsAgreed] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // 當狀態改變時，隨時存進記憶卡
+  // 🌟【關鍵魔法 1】：動態偵測真實的螢幕高度 (扣除鍵盤後的高度)
+  useEffect(() => {
+    const setViewportHeight = () => {
+      if (window.visualViewport) {
+        // 將扣除鍵盤後的「真實高度」存成一個 CSS 變數 --vh
+        document.documentElement.style.setProperty('--vh', `${window.visualViewport.height}px`);
+      }
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', setViewportHeight);
+      setViewportHeight(); // 初始化先抓一次
+    }
+
+    // 強制把網頁底層的滾動條關掉，避免 iOS 亂滑動
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', setViewportHeight);
+      }
+      document.body.style.overflow = 'auto';
+    };
+  }, []);
+
   useEffect(() => {
     sessionStorage.setItem('st_appState', appState);
     if (hourlyWage) sessionStorage.setItem('st_wage', hourlyWage);
   }, [appState, hourlyWage]);
 
-  // 3. 計時器升級：用「真實時間差」計算，重整也不怕漏算錢！
   useEffect(() => {
     let timer;
     if (appState === 'CHATTING' && hourlyWage > 0) {
@@ -65,9 +86,7 @@ export default function App() {
     scrollToBottom();
   }, [messages]);
 
-  // Socket 事件監聽
   useEffect(() => {
-    // 一連線，立刻向大腦報上身分證號碼
     socket.on('connect', () => {
       socket.emit('register_user', userId);
     });
@@ -75,10 +94,8 @@ export default function App() {
       socket.emit('register_user', userId);
     }
 
-    // 🌟 收到大腦傳來的重連成功與歷史紀錄
     socket.on('reconnect_success', (historyMessages) => {
       setAppState('CHATTING');
-      // 將歷史紀錄轉換成畫面看得懂的格式
       const formattedMessages = historyMessages.map(msg => ({
         sender: msg.senderId === userId ? 'me' : 'stranger',
         text: msg.text
@@ -91,12 +108,11 @@ export default function App() {
 
     socket.on('chat_start', () => {
       setAppState('CHATTING');
-      sessionStorage.setItem('st_startTime', Date.now()); // 記錄進去房間的精準時間
+      sessionStorage.setItem('st_startTime', Date.now());
       setMessages([{ sender: 'system', text: '已加入聊天室，正在和另一位薪水小偷連線。' }]);
     });
 
     socket.on('receive_message', (msgData) => {
-      // 後端現在傳來的是物件 { senderId, text }
       setMessages(prev => [...prev, { sender: 'stranger', text: msgData.text }]);
     });
 
@@ -123,7 +139,7 @@ export default function App() {
       return;
     }
     setAppState('WAITING');
-    socket.emit('register_user', userId); // 確保大腦知道是誰在排隊
+    socket.emit('register_user', userId);
     socket.emit('find_partner');
   };
 
@@ -137,7 +153,6 @@ export default function App() {
     scrollToBottom(); 
   };
 
-  // 離開時要清空記憶卡，免得下次一進來又卡在舊房間
   const resetChat = () => {
     setAppState('ENTRY');
     setStolenMoney(0);
@@ -166,8 +181,17 @@ export default function App() {
     }
   };
 
+  // 🌟【關鍵魔法 2】：把網頁「釘死」在螢幕上，高度套用我們剛剛抓到的 --vh
   return (
-    <div className="flex flex-col h-[100dvh] bg-gray-100 font-sans">
+    <div 
+      className="flex flex-col bg-gray-100 font-sans w-full overflow-hidden"
+      style={{ 
+        height: 'var(--vh, 100dvh)', // 吃我們算好的真實高度
+        position: 'fixed',           // 釘死在畫面上，不讓瀏覽器亂動
+        top: 0,
+        left: 0
+      }}
+    >
       <header className="bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-10 shrink-0">
         <h1 className="text-lg font-bold tracking-wider truncate">🕵️‍♂️ 小偷互助會</h1>
         {appState === 'CHATTING' && (
@@ -257,7 +281,8 @@ export default function App() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                onFocus={scrollToBottom}
+                /* 🌟 鍵盤彈出需要一點動畫時間，我們等 300 毫秒後再滾動到底部，確保畫面最完美 */
+                onFocus={() => setTimeout(scrollToBottom, 300)}
                 placeholder="輸入訊息一起摸魚..."
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />

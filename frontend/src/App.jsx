@@ -21,35 +21,79 @@ export default function App() {
   });
   
   const [hourlyWage, setHourlyWage] = useState(() => sessionStorage.getItem('st_wage') || '');
-  const [stolenMoney, setStolenMoney] = useState(0);
+  
+  // 🌟【新增】：摸魚存摺長期記憶 (localStorage)
+  const [passbook, setPassbook] = useState(() => {
+    const saved = localStorage.getItem('st_passbook');
+    return saved ? JSON.parse(saved) : { total: 0, daily: {} };
+  });
+
+  const [stolenMoney, setStolenMoney] = useState(0); // 本次聊天偷到的錢
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isAgreed, setIsAgreed] = useState(false);
   
-  // 🌟【新增狀態】：用來記錄對方是不是正在打字
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
-  // 🌟【新增計時器】：用來計算對方有沒有發呆
   const typingTimeoutRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
+  // 取得今天的日期字串 (例如 "2026-02-26")
+  const getTodayDateKey = () => {
+    // 解決時區問題，確保拿到的是本地日期
+    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+    return new Date(Date.now() - tzOffset).toISOString().split('T')[0];
+  };
+
+  // 當狀態改變時，存進 Session 短期記憶
   useEffect(() => {
     sessionStorage.setItem('st_appState', appState);
     if (hourlyWage) sessionStorage.setItem('st_wage', hourlyWage);
   }, [appState, hourlyWage]);
 
+  // 當存摺改變時，存進 Local 長期記憶
+  useEffect(() => {
+    localStorage.setItem('st_passbook', JSON.stringify(passbook));
+  }, [passbook]);
+
+  // 🌟【升級版計時器】：同時更新「本次偷的錢」跟「存摺裡的錢」
   useEffect(() => {
     let timer;
     if (appState === 'CHATTING' && hourlyWage > 0) {
-      let startTime = sessionStorage.getItem('st_startTime');
-      if (!startTime) {
-        startTime = Date.now();
-        sessionStorage.setItem('st_startTime', startTime);
-      }
-
       const moneyPerSecond = Number(hourlyWage) / 3600;
+
       timer = setInterval(() => {
-        const elapsedSeconds = (Date.now() - parseInt(startTime)) / 1000;
-        setStolenMoney(elapsedSeconds * moneyPerSecond);
+        const now = Date.now();
+        let lastTick = sessionStorage.getItem('st_lastTick');
+        
+        // 如果是剛進來，或是重整後的第一秒，以上一秒當基準
+        if (!lastTick) lastTick = now - 1000; 
+        
+        const deltaSeconds = (now - parseInt(lastTick)) / 1000;
+        const earnedNow = deltaSeconds * moneyPerSecond;
+
+        sessionStorage.setItem('st_lastTick', now);
+        
+        // 更新畫面上本次的錢
+        setStolenMoney(prev => prev + earnedNow);
+
+        // 存進長期存摺裡
+        setPassbook(prev => {
+          const today = getTodayDateKey();
+          const currentDaily = prev.daily[today] || 0;
+          return {
+            ...prev,
+            total: prev.total + earnedNow,
+            daily: {
+              ...prev.daily,
+              [today]: currentDaily + earnedNow
+            }
+          };
+        });
+
       }, 1000);
+    } else {
+      // 不在聊天室時，停止計算時間差
+      sessionStorage.removeItem('st_lastTick');
     }
     return () => clearInterval(timer);
   }, [appState, hourlyWage]);
@@ -60,7 +104,6 @@ export default function App() {
     }, 100);
   };
 
-  // 當有新訊息，或是對方開始/停止打字時，都讓畫面往下滾一點
   useEffect(() => {
     scrollToBottom();
   }, [messages, isPartnerTyping]);
@@ -87,12 +130,11 @@ export default function App() {
 
     socket.on('chat_start', () => {
       setAppState('CHATTING');
-      sessionStorage.setItem('st_startTime', Date.now());
+      sessionStorage.setItem('st_lastTick', Date.now()); // 開始計時
       setMessages([{ sender: 'system', text: '已加入聊天室，正在和另一位薪水小偷連線。' }]);
     });
 
     socket.on('receive_message', (msgData) => {
-      // 收到訊息的瞬間，立刻把對方的打字狀態關掉，並把訊息印出來
       setIsPartnerTyping(false);
       setMessages(prev => [...prev, { sender: 'stranger', text: msgData.text }]);
     });
@@ -102,9 +144,7 @@ export default function App() {
       setMessages(prev => [...prev, { sender: 'system', text: '對方覺得賺夠了，已經回去工作（或被老闆抓到了）。' }]);
     });
 
-    // 🌟【新增監聽】：聽到大腦說對方正在打字
     socket.on('partner_typing', () => setIsPartnerTyping(true));
-    // 🌟【新增監聽】：聽到大腦說對方停止打字了
     socket.on('partner_stop_typing', () => setIsPartnerTyping(false));
 
     return () => {
@@ -132,14 +172,10 @@ export default function App() {
     socket.emit('find_partner');
   };
 
-  // 🌟【新增功能】：當你正在鍵盤上敲擊時
   const handleTyping = (e) => {
     setInputValue(e.target.value);
-    
-    // 告訴大腦「我正在打字！」
     socket.emit('typing');
 
-    // 如果 1.5 秒內沒有再按鍵盤，就自動告訴大腦「我停下來了」
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       socket.emit('stop_typing');
@@ -154,7 +190,6 @@ export default function App() {
     socket.emit('send_message', inputValue);
     setInputValue('');
     
-    // 🌟 發送出去的瞬間，立刻清空計時器，並告訴大腦「我打完了」
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     socket.emit('stop_typing');
     
@@ -165,12 +200,11 @@ export default function App() {
     setAppState('ENTRY');
     setStolenMoney(0);
     setMessages([]);
-    setHourlyWage('');
+    // 不清空時薪，讓使用者下次不用重打
     setIsAgreed(false);
     setIsPartnerTyping(false);
     sessionStorage.removeItem('st_appState');
-    sessionStorage.removeItem('st_startTime');
-    sessionStorage.removeItem('st_wage');
+    sessionStorage.removeItem('st_lastTick');
   };
 
   const handleLeave = () => {
@@ -190,6 +224,9 @@ export default function App() {
     }
   };
 
+  // 取得今天的存摺金額
+  const todayEarned = passbook.daily[getTodayDateKey()] || 0;
+
   return (
     <div className="flex flex-col min-h-[100dvh] bg-gray-100 font-sans w-full">
       
@@ -208,6 +245,24 @@ export default function App() {
 
       {appState === 'ENTRY' && (
         <main className="flex-1 flex flex-col justify-center items-center p-4">
+          
+          {/* 🌟【新增】：摸魚存摺戰績看板 */}
+          <div className="w-full max-w-md bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl shadow-lg p-6 mb-6 text-white text-center transform transition hover:scale-105">
+            <h3 className="text-blue-100 font-medium tracking-widest mb-4 flex items-center justify-center gap-2">
+              <span className="text-xl">🏦</span> 你的專屬摸魚存摺
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white/10 rounded-lg p-3 border border-white/20">
+                <p className="text-xs text-blue-200 mb-1">今日已白賺</p>
+                <p className="text-2xl font-bold font-mono">$ {todayEarned.toFixed(2)}</p>
+              </div>
+              <div className="bg-white/10 rounded-lg p-3 border border-white/20">
+                <p className="text-xs text-blue-200 mb-1">歷史總收益</p>
+                <p className="text-2xl font-bold font-mono">$ {passbook.total.toFixed(2)}</p>
+              </div>
+            </div>
+          </div>
+
           <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center">
             <h2 className="text-2xl font-bold mb-6 text-gray-800">開始摸魚</h2>
             <div className="mb-6">
@@ -266,7 +321,6 @@ export default function App() {
               </div>
             ))}
             
-            {/* 🌟【對方正在輸入中動畫】 */}
             {isPartnerTyping && (
               <div className="flex justify-start">
                 <div className="bg-gray-200 text-gray-500 text-sm px-4 py-2 rounded-2xl rounded-bl-none shadow-sm flex items-center gap-1.5 animate-pulse">
@@ -289,7 +343,7 @@ export default function App() {
               <input
                 type="text"
                 value={inputValue}
-                onChange={handleTyping} /* 🌟 確保這裡是綁定 handleTyping */
+                onChange={handleTyping}
                 placeholder="輸入訊息一起摸魚..."
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />

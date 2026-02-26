@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
 const getUserId = () => {
@@ -25,9 +25,11 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isAgreed, setIsAgreed] = useState(false);
-
-  // 🌟【移除所有複雜的 JS 高度計算與鎖定】
-  // 我們讓瀏覽器回歸最原始的本能！
+  
+  // 🌟【新增狀態】：用來記錄對方是不是正在打字
+  const [isPartnerTyping, setIsPartnerTyping] = useState(false);
+  // 🌟【新增計時器】：用來計算對方有沒有發呆
+  const typingTimeoutRef = useRef(null);
 
   useEffect(() => {
     sessionStorage.setItem('st_appState', appState);
@@ -52,16 +54,16 @@ export default function App() {
     return () => clearInterval(timer);
   }, [appState, hourlyWage]);
 
-  // 🌟 改成滾動「整個網頁」到底部，而不是只滾動內部區塊
   const scrollToBottom = () => {
     setTimeout(() => {
       window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
     }, 100);
   };
 
+  // 當有新訊息，或是對方開始/停止打字時，都讓畫面往下滾一點
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isPartnerTyping]);
 
   useEffect(() => {
     socket.on('connect', () => {
@@ -90,12 +92,20 @@ export default function App() {
     });
 
     socket.on('receive_message', (msgData) => {
+      // 收到訊息的瞬間，立刻把對方的打字狀態關掉，並把訊息印出來
+      setIsPartnerTyping(false);
       setMessages(prev => [...prev, { sender: 'stranger', text: msgData.text }]);
     });
 
     socket.on('partner_left', () => {
+      setIsPartnerTyping(false);
       setMessages(prev => [...prev, { sender: 'system', text: '對方覺得賺夠了，已經回去工作（或被老闆抓到了）。' }]);
     });
+
+    // 🌟【新增監聽】：聽到大腦說對方正在打字
+    socket.on('partner_typing', () => setIsPartnerTyping(true));
+    // 🌟【新增監聽】：聽到大腦說對方停止打字了
+    socket.on('partner_stop_typing', () => setIsPartnerTyping(false));
 
     return () => {
       socket.off('connect');
@@ -103,6 +113,8 @@ export default function App() {
       socket.off('chat_start');
       socket.off('receive_message');
       socket.off('partner_left');
+      socket.off('partner_typing');
+      socket.off('partner_stop_typing');
     };
   }, []);
 
@@ -112,12 +124,26 @@ export default function App() {
       return;
     }
     if (!isAgreed) {
-      alert('alert請先閱讀並勾選同意互助會公約，才能開始摸魚喔！');
+      alert('請先閱讀並勾選同意互助會公約，才能開始摸魚喔！');
       return;
     }
     setAppState('WAITING');
     socket.emit('register_user', userId);
     socket.emit('find_partner');
+  };
+
+  // 🌟【新增功能】：當你正在鍵盤上敲擊時
+  const handleTyping = (e) => {
+    setInputValue(e.target.value);
+    
+    // 告訴大腦「我正在打字！」
+    socket.emit('typing');
+
+    // 如果 1.5 秒內沒有再按鍵盤，就自動告訴大腦「我停下來了」
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      socket.emit('stop_typing');
+    }, 1500);
   };
 
   const handleSendMessage = (e) => {
@@ -127,6 +153,11 @@ export default function App() {
     setMessages(prev => [...prev, { sender: 'me', text: inputValue }]);
     socket.emit('send_message', inputValue);
     setInputValue('');
+    
+    // 🌟 發送出去的瞬間，立刻清空計時器，並告訴大腦「我打完了」
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    socket.emit('stop_typing');
+    
     scrollToBottom(); 
   };
 
@@ -136,6 +167,7 @@ export default function App() {
     setMessages([]);
     setHourlyWage('');
     setIsAgreed(false);
+    setIsPartnerTyping(false);
     sessionStorage.removeItem('st_appState');
     sessionStorage.removeItem('st_startTime');
     sessionStorage.removeItem('st_wage');
@@ -158,11 +190,9 @@ export default function App() {
     }
   };
 
-  // 🌟【設計核心改變】：不再限制 overflow: hidden，讓這是一個「會自然變長的網頁」
   return (
     <div className="flex flex-col min-h-[100dvh] bg-gray-100 font-sans w-full">
       
-      {/* 標題列：使用 sticky 黏在頂部 */}
       <header className="sticky top-0 bg-gray-800 text-white p-3 shadow-md flex justify-between items-center z-50">
         <h1 className="text-lg font-bold tracking-wider truncate">🕵️‍♂️ 薪水小偷互助會</h1>
         {appState === 'CHATTING' && (
@@ -176,7 +206,6 @@ export default function App() {
         )}
       </header>
 
-      {/* 畫面渲染 */}
       {appState === 'ENTRY' && (
         <main className="flex-1 flex flex-col justify-center items-center p-4">
           <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center">
@@ -222,7 +251,6 @@ export default function App() {
 
       {appState === 'CHATTING' && (
         <>
-          {/* 對話區塊：拿掉 overflow-y-auto，讓整個網頁自然撐開變長 */}
           <main className="flex-1 p-4 space-y-4 bg-gray-50 pb-6">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'me' ? 'justify-end' : msg.sender === 'system' ? 'justify-center' : 'justify-start'}`}>
@@ -237,9 +265,22 @@ export default function App() {
                 )}
               </div>
             ))}
+            
+            {/* 🌟【對方正在輸入中動畫】 */}
+            {isPartnerTyping && (
+              <div className="flex justify-start">
+                <div className="bg-gray-200 text-gray-500 text-sm px-4 py-2 rounded-2xl rounded-bl-none shadow-sm flex items-center gap-1.5 animate-pulse">
+                  <span>對方正在輸入中</span>
+                  <span className="flex gap-0.5">
+                    <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"></span>
+                    <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
+                    <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                  </span>
+                </div>
+              </div>
+            )}
           </main>
 
-          {/* 輸入框區塊：使用 sticky bottom-0 讓它黏在網頁可視範圍的最底部 */}
           <footer className="sticky bottom-0 bg-white p-3 border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-50">
             <div className="text-center text-gray-400 text-[10px] font-medium mb-2 tracking-widest select-none">
               薪水小偷互助會 by @fourzpoem
@@ -248,8 +289,7 @@ export default function App() {
               <input
                 type="text"
                 value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                /* 🌟 完全移除 onFocus 事件！把工作交還給手機原生瀏覽器去推動畫面 */
+                onChange={handleTyping} /* 🌟 確保這裡是綁定 handleTyping */
                 placeholder="輸入訊息一起摸魚..."
                 className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               />
